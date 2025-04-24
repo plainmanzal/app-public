@@ -2,4 +2,3 @@ streamlit
 authlib
 pandas
 plotly
-sqlite3
