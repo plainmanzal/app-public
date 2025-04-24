@@ -176,6 +176,7 @@ def render_sidebar():
     logged_in = google_login()
 
     if logged_in:
+        st.write("Inside the IF statement")
         # Fetch user info if not already in session state
         if "user" not in st.session_state:
             oauth = OAuth2Session(token={"access_token": st.session_state["access_token"]})
