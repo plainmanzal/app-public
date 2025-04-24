@@ -21,38 +21,37 @@ def handle_logout():
         st.rerun()
 
 
-def google_login():
-    """Don't change this code!"""
-    CLIENT_ID = st.secrets["google"]["client_id"]
-    CLIENT_SECRET = st.secrets["google"]["client_secret"]
-    REDIRECT_URI = st.secrets["google"]["redirect_uri"]
+import requests
 
+def google_login():
+    """Manual OAuth login with a working Google Auth URL."""
+    CLIENT_ID = st.secrets["google"]["client_id"]
+    REDIRECT_URI = st.secrets["google"]["redirect_uri"]
+    SCOPE = "openid email profile"
     AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
     TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
-    SCOPE = "openid email profile"
 
     params = st.query_params
 
-    # 🟢 Step 1: Handle Google redirect back with code + state
+    # Step 1: Handle callback
     if "code" in params and "state" in params and "access_token" not in st.session_state:
         code = params["code"]
-        state = params["state"]
-
-        # Restore OAuth session using returned state (from URL)
-        oauth = OAuth2Session(
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET,
-            scope=SCOPE,
-            redirect_uri=REDIRECT_URI,
-            state=state,
-        )
 
         try:
-            # Debugging code that Eni used to debug
-            # st.write("🔎 Received code:", code)
-            # st.write("🔎 Received state:", state)
-            # st.write("🔎 Full query params:", st.query_params)
-            token = oauth.fetch_token(TOKEN_ENDPOINT, code=code)
+            response = requests.post(
+                TOKEN_ENDPOINT,
+                data={
+                    "code": code,
+                    "client_id": CLIENT_ID,
+                    "client_secret": st.secrets["google"]["client_secret"],
+                    "redirect_uri": REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            token = response.json()
             st.session_state["access_token"] = token["access_token"]
             st.query_params.clear()
             return True
@@ -61,20 +60,23 @@ def google_login():
             st.query_params.clear()
             return False
 
-    # 👤 Step 2: Not logged in → show login button with state in URL
+    # Step 2: Show login button with working link
     if "access_token" not in st.session_state:
-        oauth = OAuth2Session(
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET,
-            scope=SCOPE,
-            redirect_uri=REDIRECT_URI,
+        auth_url = (
+            f"{AUTH_ENDPOINT}?"
+            f"client_id={CLIENT_ID}&"
+            f"redirect_uri={REDIRECT_URI}&"
+            f"response_type=code&"
+            f"scope={SCOPE.replace(' ', '%20')}&"
+            f"access_type=offline&"
+            f"prompt=consent&"
+            f"state=streamlit_login"
         )
-        auth_url, _state = oauth.create_authorization_url(AUTH_ENDPOINT)
 
+        #st.write(auth_url)
         st.sidebar.link_button("🔐 Login with Google", url=auth_url)
         return False
 
-    # ✅ Already logged in
     return True
 
 
