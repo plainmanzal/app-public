@@ -74,21 +74,7 @@ def google_login():
         )
 
         #st.write(auth_url)
-        st.sidebar.markdown(
-            f"""
-            <a href="{auth_url}" target="_self" style="
-            display: inline-block;
-            background-color: #ff96ec;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 5px;
-            font-weight: bold;
-            text-align: center;
-            "> Login with Google</a>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.sidebar.link_button("🔐 Login with Google", url=auth_url)
         return False
 
     return True
