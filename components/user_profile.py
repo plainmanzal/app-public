@@ -71,3 +71,25 @@ def render_user_profile():
             st.markdown(f"**Hello, {first_name}!**")
     else:
         st.sidebar.success("Logged in ✅")
+        
+    conn = create_user_connection(USER_DB)
+    cursor = conn.cursor()
+    user_id = st.session_state["user_id"]
+    cursor.execute("SELECT goal, food_preferences FROM User WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    current_goal = row[0] if row else ""
+    current_prefs = row[1] if row else ""
+
+    with st.form("profile_form"):
+        calorie_goal = st.number_input("Calorie Goal", min_value=0, value=int(current_goal) if current_goal else 2000)
+        preferences = st.text_input("Food Preferences (comma-separated)", value=current_prefs or "")
+        submitted = st.form_submit_button("Save Preferences")
+        if submitted:
+            cursor.execute(
+                "UPDATE User SET goal = ?, food_preferences = ? WHERE user_id = ?",
+                (calorie_goal, preferences, user_id)
+            )
+            conn.commit()
+            st.success("Preferences updated!")
+    cursor.close()
+    conn.close()
