@@ -2,8 +2,9 @@ import streamlit as st
 from authlib.integrations.requests_client import OAuth2Session
 from components.menu_display import display_menu_and_handle_journal
 from database.user_db import create_connection as create_user_connection, add_user, USER_DB, display_journal, display_user_dish_ratings
-from .user_profile import render_user_profile
+from .user_profile import render_profile_form
 from temp_graph_stuff import create_plots
+import sqlite3
 
 
 DEBUG = False # keep False when testing Google Login
@@ -21,6 +22,9 @@ def handle_logout():
         st.rerun()
 
 
+import requests
+
+import streamlit as st
 import requests
 
 def google_login():
@@ -104,7 +108,7 @@ def render_location(connection):
             unsafe_allow_html=True,
             )
             
-            display_user_dish_ratings(connection, st.session_state.user_id)
+            render_profile_form(st.session_state.user_id)
 
         elif selected_tab == "Food Journal":
             st.sidebar.markdown("---")
@@ -151,8 +155,11 @@ def render_location(connection):
             st.markdown("</div>", unsafe_allow_html=True)
           
     
+
+
+
 def render_sidebar():
-    """Handles the login/logout process in the sidebar."""
+    """Handles the login/logout process and user info in the sidebar."""
     st.sidebar.markdown(
         """
         <div style="
@@ -169,62 +176,127 @@ def render_sidebar():
         unsafe_allow_html=True,
     )
 
-    if DEBUG:
-        fake_login()
-
-    # Use Google login
     logged_in = google_login()
 
     if logged_in:
-        # Fetch user info if not already in session state
-        if "user" not in st.session_state:
-            oauth = OAuth2Session(token={"access_token": st.session_state["access_token"]})
-            user_info = oauth.get("https://www.googleapis.com/oauth2/v1/userinfo").json()
-            st.session_state["user"] = {
-                "name": user_info.get("name"),
-                "email": user_info.get("email"),
-                "picture": user_info.get("picture"),
-            }
-            # Connect to your user database
-            conn = create_user_connection(USER_DB)
-            cursor = conn.cursor()
-            email = user_info.get("email")
-            name = user_info.get("name")
-            cursor.execute("SELECT user_id FROM User WHERE email = ?", (email,))
-            row = cursor.fetchone()
-            if row:
-                st.session_state["user_id"] = row[0]
-                st.session_state["welcome_status"] = "back"
-            else:
-                st.session_state["user_id"] = add_user(conn, name, email)
-                st.session_state["welcome_status"] = "new"
-            cursor.close()
-            conn.close()
+        user_id = st.session_state.get("user_id")
+        db_username = st.session_state.get("db_username")
+        user_picture = st.session_state.get("user", {}).get("picture")
 
-        # Display user info in the sidebar
-        user = st.session_state["user"]
-        first_name = user["name"].split()[0]
-        welcome_status = st.session_state.get("welcome_status", "back")
-        welcome_message = (
-            f"<h1 style='color:black;'><em><span style='color:#ff96ec;'>Bitzy</span> says Welcome back, {first_name}!~</em></h1>"
-            if welcome_status == "back"
-            else f"<h1 style='color:black;'><em><span style='color:#ff96ec;'>Bitzy</span> says Welcome, {first_name}!~</em></h1>"
-        )
-        st.sidebar.markdown(
-            f"""
-            <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
-            <img src="{user['picture']}" style="width: 60px; height: 60px; border: 3px solid #ff96ec; border-radius: 50%;">
-            </div>
-            <div style="text-align: center;">
-            {welcome_message}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        handle_logout()
+        # Fetch user info from DB if not already in session state or needs update
+        if user_id and not db_username:
+            conn = None
+            try:
+                conn = create_user_connection(USER_DB)
+                cursor = conn.cursor()
+                cursor.execute("SELECT username FROM User WHERE user_id = ?", (user_id,))
+                result = cursor.fetchone()
+                if result:
+                    st.session_state["db_username"] = result[0]
+                    db_username = result[0]
+            except sqlite3.Error as e:
+                 st.sidebar.warning(f"DB Error: {e}")
+            finally:
+                if conn:
+                    conn.close()
+
+        # Fetch Google info if needed (only on first login after token)
+        if "user" not in st.session_state and "access_token" in st.session_state:
+             try:
+                oauth = OAuth2Session(token={"access_token": st.session_state["access_token"]})
+                user_info = oauth.get("https://www.googleapis.com/oauth2/v1/userinfo").json()
+                st.session_state["user"] = { # Store Google info separately if needed
+                    "name": user_info.get("name"),
+                    "email": user_info.get("email"),
+                    "picture": user_info.get("picture"),
+                }
+                user_picture = user_info.get("picture") # Update picture
+
+                # --- Database Check/Add User on First Login ---
+                conn = None
+                try:
+                    conn = create_user_connection(USER_DB)
+                    cursor = conn.cursor()
+                    email = user_info.get("email")
+                    google_name = user_info.get("name") # Use Google name as default username
+
+                    cursor.execute("SELECT user_id, username FROM User WHERE email = ?", (email,))
+                    row = cursor.fetchone()
+                    if row:
+                        st.session_state["user_id"] = row[0]
+                        st.session_state["db_username"] = row[1] # Store db username
+                        st.session_state["welcome_status"] = "back"
+                        user_id = row[0]
+                        db_username = row[1]
+                    else:
+                        # Add user with Google name as initial username
+                        new_user_id = add_user(conn, google_name, email)
+                        if new_user_id:
+                             st.session_state["user_id"] = new_user_id
+                             st.session_state["db_username"] = google_name # Store db username
+                             st.session_state["welcome_status"] = "new"
+                             user_id = new_user_id
+                             db_username = google_name
+                        else:
+                             st.sidebar.error("Failed to add user to database.")
+                             logged_in = False # Treat as not logged in if DB add fails
+                except sqlite3.Error as e:
+                     st.sidebar.error(f"Database connection/query failed: {e}")
+                     logged_in = False # Treat as not logged in on DB error
+                finally:
+                    if conn:
+                        conn.close()
+             except Exception as e:
+                  st.sidebar.error(f"Failed to fetch Google user info: {e}")
+                  logged_in = False # Treat as not logged in if Google fetch fails
 
 
-
-
-    
-    
+        # Display user info if successfully logged in and user_id is set
+        if logged_in and user_id:
+            display_name = db_username or "User" # Use DB username, fallback to "User"
+            welcome_status = st.session_state.get("welcome_status", "back")
+            welcome_message = (
+                f"""
+                <div style="
+                    background-color: rgba(255, 255, 255, 0.0);
+                    border: 2px solid #ff96ec;
+                    border-radius: 15px;
+                    box-shadow: 0 0 12px 3px rgba(255, 150, 236, 0.5), 0 0 24px 6px rgba(255, 150, 236, 0.3);
+                    padding: 10px;
+                    text-align: center;
+                    color: #272936;
+                    font-weight: bold;
+                    font-size: 1.1em;
+                ">
+                    <span style='color:#ff96ec;'>Bitzy</span> says Welcome back, {display_name}!~
+                </div>
+                """
+                if welcome_status == "back"
+                else f"""
+                <div style="
+                    background-color: rgba(255, 255, 255, 0.0);
+                    border: 2px solid #ff96ec;
+                    border-radius: 15px;
+                    box-shadow: 0 0 12px 3px rgba(255, 150, 236, 0.5), 0 0 24px 6px rgba(255, 150, 236, 0.3);
+                    padding: 10px;
+                    text-align: center;
+                    color: #272936;
+                    font-weight: bold;
+                    font-size: 1.1em;
+                ">
+                    <span style='color:#ff96ec;'>Bitzy</span> says Welcome, {display_name}!~
+                </div>
+                """
+            )
+            st.sidebar.markdown(
+                f"""
+                <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
+                <img src="{user_picture or 'https://i.imgur.com/TMVgTr0.png'}" style="width: 60px; height: 60px; border: 3px solid #ff96ec; border-radius: 50%;">
+                </div>
+                <div style="text-align: center; color: #272936; font-weight: bold; font-size: 1.1em;">
+                 {welcome_message}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            handle_logout()

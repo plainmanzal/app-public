@@ -8,7 +8,6 @@ from database.user_db import (
     log_daily_journal_entry,
     add_journal_dish,
     add_rating,
-    ensure_dish_in_user_db,
 )
 
 LOCATION_MAP = {
@@ -72,11 +71,78 @@ def get_all_allergens_and_prefs(conn_wfr):
             preferences.update([p.strip() for p in row[1].split(",") if p.strip()])
     return sorted(allergens), sorted(preferences)
 
+def bitzy_emotions(rating):
+    if rating == "one star":
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
+                    <b>Yikes! Bitzy wants a refund in flavor points 😢</b>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    elif rating == "two stars":
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
+                    <b>Meh. Not Bitzy’s fave… 😐</b>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    elif rating == "three stars":
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
+                    <b>Solid bite! Could use a little extra something. 😃</b>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    elif rating == "four stars":
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
+                    <b>Yum! That was a tasty treat! 😍</b>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    elif rating == "five stars":
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
+                    <b>My byte-sized heart is full! That meal was perfection. 🤩</b>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        return ""
 
 def display_menu_and_handle_journal(conn_user):
     if "user_id" not in st.session_state:
         st.warning("Please log in to continue.")
         st.stop()
+    USER_DB = os.path.join(project_root, "user_data.db")  # Define the path to the user database
+    conn_user = create_connection(USER_DB)
+    cursor_user = conn_user.cursor()
+    user_id = st.session_state["user_id"]
+    cursor_user.execute("SELECT food_preferences, allergens FROM User WHERE user_id = ?", (user_id,))
+    row = cursor_user.fetchone()
+    user_prefs = [p.strip() for p in (row[0] or "").split(",") if p.strip()] if row else []
+    user_allergens = [a.strip() for a in (row[1] or "").split(",") if a.strip()] if row else []
+ 
 
     conn_wfr = create_connection(WFR_DB)
     cursor_wfr = conn_wfr.cursor()
@@ -91,8 +157,8 @@ def display_menu_and_handle_journal(conn_user):
         """,
         unsafe_allow_html=True
     )
-    selected_allergens = st.multiselect("Allergens to avoid", all_allergens, key="allergen_filter")
-    selected_prefs = st.multiselect("Preferences", all_prefs, key="pref_filter")
+    selected_allergens = st.multiselect("Allergens to avoid", all_allergens, default=[a for a in user_allergens if a in all_allergens], key="allergen_filter")
+    selected_prefs = st.multiselect("Preferences", all_prefs, default=[p for p in user_prefs if p in all_prefs], key="pref_filter")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -102,7 +168,7 @@ def display_menu_and_handle_journal(conn_user):
     with col3:
         date_input = st.date_input("Enter the Date", date.today())
         date_str = date_input.strftime('%Y-%m-%d')
-
+    
     # Get Menu
     if st.button("Get menu!"):
         st.session_state["meal"] = meal
@@ -145,41 +211,32 @@ def display_menu_and_handle_journal(conn_user):
             dish_name, dish_id, calories, protein, carbs, fat, allergens, preferences = dish
             col1, col2, col3 = st.columns([3, 1, 2])
             with col1:
+
                 st.markdown(
                     f"""
-                    <div style="
-                        background-color: #e6f7ff;
-                        border-radius: 10px;
-                        padding: 10px;
-                        text-align: center;
-                        box-shadow: 0 0 10px #99ccff;
-                        ">
-                        <b>{dish_name}</b>
-                        <div style="font-size:0.85em;color:#ff96ec;">{allergens if allergens else ""}</div>
-                        <div style="font-size:0.85em;color:#6ecb63;">{preferences if preferences else ""}</div>
+                    <div style="background: #eaf6ff; border-radius: 12px; padding: 10px; margin-bottom: 10px; height: 100%; box-shadow: 0 0 15px rgba(0, 183, 255, 0.7);">
+                    <div style="font-weight: bold; color: #272936; font-size: 1.1em;">{dish_name}</div>
+                    <div style="font-size:0.85em; color:#e67e22; margin-top: 3px;">{allergens if allergens else "No listed allergens"}</div>
+                    <div style="font-size:0.85em; color:#27ae60;">{preferences if preferences else "No listed preferences"}</div>
                     </div>
                     """,
                     unsafe_allow_html=True
-                )
+                    )
             with col2:
                 st.markdown(
                     f"""
-                    <div style="
-                        background-color: #ffe6f7;
-                        border-radius: 10px;
-                        padding: 10px;
-                        text-align: center;
-                        box-shadow: 0 0 10px #ff99cc;
-                        ">
-                        <b>{calories} cal</b>
+                    <div style="background: #ffeaf6; border-radius: 12px; padding: 10px; margin-bottom: 10px; height: 100%; text-align: center; box-shadow: 0 0 10px rgba(255, 105, 180, 0.5);">
+                    <div><b>{calories or 0}</b> cal</div>
+                    <div style='font-size:0.8em; color: #3498db;'>P:{protein or 0}g C:{carbs or 0}g F:{fat or 0}g</div>
                     </div>
                     """,
                     unsafe_allow_html=True
-                )
+                    )
+                            
             with col3:
                 already_added = f"add_{dish_id}" in st.session_state["selected_dishes"]
                 if already_added:
-                    st.button("Added! ✅", key=f"added_{dish_id}", disabled=True)
+                    st.button("Scroll to finish ✅", key=f"added_{dish_id}", disabled=True)
                 else:
                     if st.button("Add to Journal", key=f"add_{dish_id}"):
                         st.session_state["selected_dishes"][f"add_{dish_id}"] = dish
@@ -198,24 +255,38 @@ def display_menu_and_handle_journal(conn_user):
         for key, selected_dish in st.session_state["selected_dishes"].items():
             dish_name, dish_id, calories, protein, carbs, fat, allergens, preferences = selected_dish
             st.success(f"{dish_name} was added to your journal!")
-            rating_input = st.slider(f"How would you rate {dish_name}?", 1, 5, key=f"rate_{key}")
+        
+        
+            #allow for ranking of dishes
+            sentiment_mapping = ["one star", "two stars", "three stars", "four stars", "five stars"]
+            rating_input = st.feedback("stars")
+            rate = sentiment_mapping[rating_input] if rating_input is not None else "no rating"
+    
+            st.markdown(
+                f"""
+                <div style="
+                    background-color: #f9f9f9;
+                    border: 1px solid #ddd;
+                    border-radius: 10px;
+                    padding: 15px;
+                    margin-bottom: 10px;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); ">
+                    
+                   <b> How would you rate {dish_name} from 1 to 5 stars?
+                
+                    You selected {rate}!
+                    
+                </b>   
+                    
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            bitzy = bitzy_emotions(rate)
+       
 
             # Save the journal entry
-        if st.button("✅ Save Journal Entry", key=f"save_journal_{dish_id}"):
-            try:
-                # 1. Ensure dish exists in user_data.db
-                ensure_dish_in_user_db(
-                    conn_user,
-                    dish_id,
-                    dish_name,
-                    location,  # or db_location if you use a mapping
-                    calories,
-                    protein,
-                    carbs,
-                    fat
-                )
-
-                # 2. Save the journal entry and get its ID
+            if st.button("✅ Save Journal Entry", key=f"save_journal_{dish_id}"):
                 journal_id = log_daily_journal_entry(
                     conn_user,
                     st.session_state["user_id"],
@@ -223,20 +294,19 @@ def display_menu_and_handle_journal(conn_user):
                     mood_input,
                     st.session_state.get("meal"),
                     notes_input,
-                )
-
-                # 3. Link the dish to the journal entry
-                journal_dish_id = add_journal_dish(conn_user, journal_id, dish_id)
-
-                # 4. Save the rating
-                add_rating(conn_user, journal_dish_id, dish_id, rating_input)
-
-                st.session_state["selected_dishes"] = {}
-                st.session_state["added_to_journal"] = False
-                st.success("Bitzy saved this journal entry and rating! 🎉")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to save journal entry or rating: {e}")
-
+                 )
+ 
+                if journal_id != None:
+                    add_journal_dish(conn_user, journal_id, dish_id)
+                    add_rating(conn_user, journal_id, dish_id, rating_input)
+                    st.session_state["selected_dishes"] = {} # why is this reset every time?
+                    st.session_state["added_to_journal"] = False
+                    st.success("Bitzy saved this journal entry! 🎉")
+                    st.rerun()
+                else:
+                    st.error("Failed to save journal entry :(")
+    
+    cursor_user.close()
+    conn_user.close()  
     cursor_wfr.close()
     conn_wfr.close()

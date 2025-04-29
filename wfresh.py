@@ -5,15 +5,10 @@ from components.menu_display import display_menu_and_handle_journal
 from components.auth import render_location
 from database.user_db import create_connection as create_user_connection, USER_DB
 from database.menu_db import create_wfr_tables, update_all_menus_for_week
-
+from database.user_db import display_user_dish_ratings
 from database.menu_db import create_connection, WFR_DB, update_all_menus_for_week
 import os
 
-create_wfr_tables()
-
-today = date.today()
-monday = today - timedelta(days=today.weekday())
-monday_str = monday.strftime('%Y-%m-%d')
 
 # --- Only update menus once per week for all users (using a file flag) ---
 def menu_update_needed(monday_str):
@@ -24,6 +19,10 @@ def set_menu_updated(monday_str):
     flag_file = f".menu_updated_{monday_str}"
     with open(flag_file, "w") as f:
         f.write("updated")
+
+today = date.today()
+monday = today - timedelta(days=today.weekday())
+monday_str = monday.strftime('%Y-%m-%d')
 
 if menu_update_needed(monday_str):
     conn_wfr = create_connection(WFR_DB)
@@ -70,6 +69,7 @@ if "user_id" not in st.session_state:
 
 if "selected_tab" not in st.session_state:
     st.session_state["selected_tab"] = "Home"
+    
 
 # --- Custom CSS for branding, overlays, and buttons ---
 st.markdown("""
@@ -232,6 +232,9 @@ else:
             """,
             unsafe_allow_html=True
         )
+        conn_user = create_user_connection(USER_DB)
+        display_user_dish_ratings(conn_user, st.session_state.user_id)
+        conn_user.close()
     else:
         st.markdown('</div>', unsafe_allow_html=True)
 

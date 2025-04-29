@@ -123,16 +123,16 @@ def log_daily_journal_entry(conn_user, user_id, date, mood, meal_type, notes):
 
 # adds a link between journal entry and a dish in the Journal_Dish table
 def add_journal_dish(conn_user, journal_id, dish_id):
-    sql = ''' INSERT INTO Journal_Dish(journal_id, dish_id) VALUES (?,?) '''
-    cursor = conn_user.cursor()
-    try:
-        cursor.execute(sql, (journal_id, dish_id))
-        conn_user.commit()
-        
-        return cursor.lastrowid
-    except sqlite3.Error as e:
-        st.error(f"Error adding journal dish entry: {e}")
-        return None
+     sql = ''' INSERT INTO Journal_Dish(journal_id, dish_id) VALUES (?,?) '''
+     cursor = conn_user.cursor()
+     try:
+         cursor.execute(sql, (journal_id, dish_id))
+         conn_user.commit()
+ 
+         return cursor.lastrowid
+     except sqlite3.Error as e:
+         st.error(f"Error adding journal dish entry: {e}")
+         return None
 
 
 # adds a rating for a dish in a journal entry
@@ -147,32 +147,53 @@ def add_rating(conn_user, journal_dish_id, dish_id, rating):
         st.error(f"Error adding rating: {e}")
         return None
 
+def parse_quantity(quantity_str):
+    """Converts quantity string ('1/3', '1/2', '2', custom) to float."""
+    if not quantity_str:
+        return 1.0
+    if quantity_str == "1/3":
+        return 1/3
+    if quantity_str == "1/2":
+        return 0.5
+    try:
+        return float(quantity_str)
+    except ValueError:
+        # Handle potential custom text - maybe default to 1 or log warning
+        # For now, default to 1 if conversion fails
+        return 1.0
 
 # gets all dishes associated with a journal entry
 
 def get_journal_dishes(conn_user, journal_id):
-    # Get dish_ids from Journal_Dish in user_data.db
-    sql = "SELECT dish_id FROM Journal_Dish WHERE journal_id = ?"
-    cursor = conn_user.cursor()
-    cursor.execute(sql, (journal_id,))
-    dish_ids = [row[0] for row in cursor.fetchall()]
-    cursor.close()
+    # Get dish_ids AND quantity from Journal_Dish in user_data.db
+    sql = "SELECT dish_id, quantity FROM Journal_Dish WHERE journal_id = ?"
+    cursor_user = conn_user.cursor()
+    cursor_user.execute(sql, (journal_id,))
+    # Store as dict: {dish_id: quantity}
+    dish_quantities = {row[0]: row[1] for row in cursor_user.fetchall()}
+    cursor_user.close()
 
     # Now get dish info from wellesley_fresh_data.db
     from database.menu_db import create_connection as create_menu_connection, WFR_DB
-    conn_menu = create_menu_connection(WFR_DB)
-    cursor_menu = conn_menu.cursor()
+    conn_menu = None
     dishes = []
-    for dish_id in dish_ids:
-        cursor_menu.execute(
-            "SELECT dish_id, dish_name, calories, protein, carbs, fat FROM Dish WHERE dish_id = ?",
-            (dish_id,)
-        )
-        result = cursor_menu.fetchone()
-        if result:
-            dishes.append(result)
-    cursor_menu.close()
-    conn_menu.close()
+    try:
+        conn_menu = create_menu_connection(WFR_DB)
+        cursor_menu = conn_menu.cursor()
+        for dish_id, quantity in dish_quantities.items():
+            cursor_menu.execute(
+                "SELECT dish_id, dish_name, calories, protein, carbs, fat FROM Dish WHERE dish_id = ?",
+                (dish_id,)
+            )
+            result = cursor_menu.fetchone()
+            if result:
+                # Append dish info tuple along with its quantity
+                dishes.append(result + (quantity,)) # (id, name, cal, pro, carb, fat, quantity)
+    except sqlite3.Error as e:
+        st.error(f"Error fetching dish details from menu DB: {e}")
+    finally:
+        if conn_menu:
+            conn_menu.close() # Ensure menu connection is closed
     return dishes
 
 # gets a user's journal entries for a given date
@@ -331,28 +352,34 @@ def ensure_dish_in_user_db(conn_user, dish_id, dish_name, dining_hall, calories,
         )
         conn_user.commit()
     cursor.close()
-    
 
-# def get_user_nutrition_data(conn_user, user_id):
-#     sql = """
-#         SELECT
-#             dj.date,
-#             d.dish_name,
-#             d.calories,
-#             d.protein,
-#             d.carbs,
-#             d.fat
-#         FROM Daily_Journal dj
-#         JOIN Journal_Dish jd ON dj.journal_id = jd.journal_id
-#         JOIN Dish d ON jd.dish_id = d.dish_id
-#         WHERE dj.user_id = ?
-#         ORDER BY dj.date DESC
-#     """
-#     df = pd.read_sql_query(sql, conn_user, params=(user_id,))
-#     return df
+    # ... (keep all code from create_connection down to ensure_dish_in_user_db) ...
+
+def ensure_dish_in_user_db(conn_user, dish_id, dish_name, dining_hall, calories, protein, carbs, fat):
+    # Check if dish exists in user_data.db
+    cursor = conn_user.cursor()
+    cursor.execute("SELECT dish_id FROM Dish WHERE dish_id = ?", (dish_id,))
+    exists = cursor.fetchone()
+    if not exists:
+        cursor.execute(
+            "INSERT INTO Dish (dish_id, dish_name, dining_hall, calories, protein, carbs, fat) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (dish_id, dish_name, dining_hall, calories, protein, carbs, fat)
+        )
+        conn_user.commit()
+    cursor.close()
 
 
-# gets all dishes in the Dish table
+# --- REMOVE THE MISPLACED FUNCTION DEFINITION BELOW ---
+# def display_menu_and_handle_journal(conn_user):
+#    # ... (REMOVE ALL CODE BELONGING TO THIS FUNCTION DEFINITION) ...
+#    # ... down to ...
+#    cursor_wfr.close()
+#    conn_wfr.close()
+# --- END OF REMOVAL ---
+
+
+# --- Ensure the REAL display_journal function is present ---
+# (This function should already exist somewhere above the removed block)
 def display_journal(conn_user, user_id):
     st.session_state["user_id"] = user_id
 
@@ -453,7 +480,7 @@ def display_journal(conn_user, user_id):
 
                     # Rows
                     for dish in dishes:
-                        dish_id, name, cal, protein, carbs, fat = dish
+                        dish_id, name, cal, protein, carbs, fat, quantity  = dish
                         ratings = get_ratings_for_dish(conn, dish_id)
                         avg_rating = round(sum(r[0] for r in ratings) / len(ratings), 1) if ratings else "N/A"
 
@@ -477,6 +504,3 @@ def display_journal(conn_user, user_id):
             
     else:
         st.info("No journal entries for that date.")
-        
-#def display_favorites(conn_user, user_id):
-    
