@@ -504,3 +504,4 @@ def display_journal(conn_user, user_id):
             
     else:
         st.info("No journal entries for that date.")
+    
