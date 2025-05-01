@@ -27,6 +27,12 @@ def download_db_from_github():
 
 download_db_from_github()
 
+st.set_page_config(
+    page_title="Byte By Bite",  # This is the tab title
+    page_icon="https://imgur.com/TMVgTr0.png",  # This is your Bitzy logo (favicon)
+    layout="wide"  # Optional: makes your app use the full width
+)
+
 # --- Only update menus once per week for all users (using a file flag) ---
 def menu_update_needed(monday_str):
     flag_file = f".menu_updated_{monday_str}"
