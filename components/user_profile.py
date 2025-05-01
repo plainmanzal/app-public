@@ -2,6 +2,7 @@
 
 import streamlit as st
 import requests
+
 import sqlite3
 from database.user_db import create_connection as create_user_connection, USER_DB
 from database.menu_db import create_connection, WFR_DB
@@ -119,7 +120,7 @@ def render_profile_form(user_id):
     cursor_wfr = conn_wfr.cursor()
 
     # Fetch user preferences AND username from USER_DB
-    cursor_user.execute("SELECT username, goal, food_preferences, allergens FROM User WHERE user_id = ?", (user_id,))
+    cursor_user.execute("SELECT username, goal, food_preferences, allergens, bitzy_mood FROM User WHERE user_id = ?", (user_id,))
     row = cursor_user.fetchone()
     current_username = row[0] if row else "User"
     current_goal = row[1] if row else ""
@@ -127,7 +128,9 @@ def render_profile_form(user_id):
     current_allergens_str = row[3] if row else ""
     current_prefs = set(current_prefs_str.split(",") if current_prefs_str else [])
     current_allergens = set(current_allergens_str.split(",") if current_allergens_str else [])
-
+    current_bitzy_mood = row[4] if row and row[4] else "Happy"
+    if "profile_bitzy_mood" not in st.session_state:
+        st.session_state["profile_bitzy_mood"] = current_bitzy_mood
 
     # Fetch options from WFR_DB
     cursor_wfr.execute("SELECT DISTINCT preferences FROM Dish")
@@ -140,6 +143,32 @@ def render_profile_form(user_id):
     with st.form("profile_form", clear_on_submit=False):
         st.markdown("<div class='bitzy-header'>⚙️ Settings & Preferences</div>", unsafe_allow_html=True)
 
+        bitzy_moods = {
+            "Excited": "https://i.postimg.cc/RZ58LF1K/bitzy-excited.png",
+            "Happy": "https://i.postimg.cc/44Ks8YcS/bitzy-happy.png",
+            "Neutral": "https://i.postimg.cc/h4xxktW2/bitzy-neutral.png",
+            "Sad": "https://i.postimg.cc/jdFqxzbK/bitzy-sad.png",
+            "Mad": "https://i.postimg.cc/qvFN5PRs/bitzy-mad.png"
+        }
+        current_bitzy = st.session_state.get("profile_bitzy_mood", "Happy")
+        selected_bitzy = st.selectbox(
+            "Choose your Bitzy mood for today!",
+            list(bitzy_moods.keys()),
+            index=list(bitzy_moods.keys()).index(current_bitzy) if current_bitzy in bitzy_moods else 1,
+            key="profile_bitzy_mood"
+        )
+        # Use the value returned by the selectbox, not session_state!
+        st.markdown(
+            f"""
+            <div style="text-align:center; background-color:#ffffff; border-radius:12px; padding:1em; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+            <img src="{bitzy_moods[selected_bitzy]}" alt="Bitzy Mood" style="width:90px; height:90px;">
+            <div style="color:#ff96ec; font-family:'Pacifico',cursive; font-size:1.2rem; margin-top:0.5em;">
+                Bitzy feels <b>{selected_bitzy}</b> today!
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
         # --- Username Input ---
         new_username = st.text_input("Username", value=current_username)
         if new_username.strip() == "":
@@ -164,14 +193,14 @@ def render_profile_form(user_id):
 
 
         # Preferences column
-        st.markdown("<div class='bitzy-subtitle'>Preferences</div>", unsafe_allow_html=True)
-        selected_prefs = set()
-        for option in sorted(list(food_options)):
-             is_checked = st.checkbox(option, value=(option in current_prefs), key=f"pref_{option}")
-             if is_checked:
-                 selected_prefs.add(option)
-        st.markdown('</div>', unsafe_allow_html=True) # Close checkbox-group
-        st.markdown('</div>', unsafe_allow_html=True) # Close col
+        with st.container():
+            st.markdown("<div class='bitzy-subtitle'>Preferences</div>", unsafe_allow_html=True)
+            selected_prefs = set()
+            for option in sorted(list(food_options)):
+                is_checked = st.checkbox(option, value=(option in current_prefs), key=f"pref_{option}")
+                if is_checked:
+                    selected_prefs.add(option)
+         
 
         # Allergens column
         st.markdown("<div class='bitzy-subtitle'>Allergens</div>", unsafe_allow_html=True)
@@ -194,29 +223,24 @@ def render_profile_form(user_id):
 
         if submitted:
             try:
-                # Prepare data for update
                 prefs_to_save = ",".join(sorted(list(selected_prefs)))
                 allergens_to_save = ",".join(sorted(list(selected_allergens)))
-
-                # Update User table
+                # Update User table, now including bitzy_mood
                 cursor_user.execute(
                     """UPDATE User
-                       SET username = ?, goal = ?, food_preferences = ?, allergens = ?
-                       WHERE user_id = ?""",
-                    (new_username, str(calorie_goal), prefs_to_save, allergens_to_save, user_id)
+                    SET username = ?, goal = ?, food_preferences = ?, allergens = ?, bitzy_mood = ?
+                    WHERE user_id = ?""",
+                    (new_username, str(calorie_goal), prefs_to_save, allergens_to_save, selected_bitzy, user_id)
                 )
                 conn_user.commit()
                 st.success("Changes were saved! ✨")
-                # Update session state if username changed
-                if new_username != current_username:
-                    st.session_state['db_username'] = new_username # Store db username
-                st.rerun() # Rerun to reflect changes immediately
+                st.session_state['db_username'] = new_username
+                st.rerun()
             except sqlite3.Error as e:
                 st.error(f"Database error: {e}")
             except Exception as e:
                 st.error(f"An unexpected error occurred: {e}")
 
-    st.markdown('</div>', unsafe_allow_html=True)  # Close bitzy-container
 
     # Close connections
     cursor_user.close()

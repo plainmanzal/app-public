@@ -1,4 +1,5 @@
 import streamlit as st
+import sqlalchemy as sql
 from components.auth import render_sidebar
 from datetime import timedelta, date
 from components.menu_display import display_menu_and_handle_journal
@@ -8,7 +9,24 @@ from database.menu_db import create_wfr_tables, update_all_menus_for_week, creat
 from database.user_db import display_user_dish_ratings
 from database.menu_db import create_connection, WFR_DB, update_all_menus_for_week
 import os
+import requests
 
+def download_db_from_github():
+    db_path = st.secrets["github"]["db_path"]
+    token = st.secrets["github"]["token"]
+    repo = st.secrets["github"]["repo"]
+    # Construct the raw URL for the file in your repo
+    url = f"https://raw.githubusercontent.com/{repo}/main/{db_path}"
+    headers = {"Authorization": f"token {token}"}
+    if not os.path.exists(db_path):
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            with open(db_path, "wb") as f:
+                f.write(r.content)
+        else:
+            st.error("Failed to download user_data.db from GitHub.")
+
+download_db_from_github()
 
 # --- Only update menus once per week for all users (using a file flag) ---
 def menu_update_needed(monday_str):
@@ -31,6 +49,30 @@ if menu_update_needed(monday_str):
     conn_wfr.close()
     set_menu_updated(monday_str)
     st.success("Menus updated for this week!")
+
+def get_journal_streak(conn_user, user_id):
+    """Returns the current streak (in days) of consecutive journal entries."""
+    cur = conn_user.cursor()
+    cur.execute("""
+        SELECT DISTINCT date
+        FROM Daily_Journal
+        WHERE user_id = ?
+        ORDER BY date DESC
+    """, (user_id,))
+    dates = [row[0] for row in cur.fetchall()]
+    cur.close()
+    if not dates:
+        return 0
+
+    # Convert to date objects and sort descending
+    date_objs = sorted([date.fromisoformat(d) for d in dates], reverse=True)
+    streak = 1
+    for i in range(1, len(date_objs)):
+        if (date_objs[i-1] - date_objs[i]).days == 1:
+            streak += 1
+        else:
+            break
+    return streak
 
 # --- Google Fonts for extra polish ---
 st.markdown("""
@@ -229,28 +271,26 @@ else:
             # Get user's 4- or 5-star dishes
             cur = conn_user.cursor()
             cur.execute("""
-                SELECT DISTINCT d.dish_id, d.dish_name
-                FROM Rating r
-                JOIN Dish d ON r.dish_id = d.dish_id
-                JOIN Journal_Dish jd ON r.journal_dish_id = jd.journal_dish_id
-                JOIN Daily_Journal dj ON jd.journal_id = dj.journal_id
-                WHERE dj.user_id = ? AND r.rating >= 4
+            SELECT DISTINCT d.dish_id, d.dish_name
+            FROM Rating r
+            JOIN Dish d ON r.dish_id = d.dish_id
+            JOIN Journal_Dish jd ON r.journal_dish_id = jd.journal_dish_id
+            JOIN Daily_Journal dj ON jd.journal_id = dj.journal_id
+            WHERE dj.user_id = ? AND r.rating >= 4
             """, (user_id,))
             fav_dishes = cur.fetchall()
             if not fav_dishes:
                 cur.close()
                 return []
             conn_menu = create_menu_connection(WFR_DB)
-            cur_menu =  conn_menu.cursor()
+            cur_menu = conn_menu.cursor()
             today = date.today()
-            week_start = today - timedelta(days=today.weekday())
-            week_end = week_start + timedelta(days=6)
             cur_menu.execute("""
                 SELECT m.date, m.dining_hall, m.meal_type, d.dish_name
                 FROM Menu m
                 JOIN Dish d ON m.dish_id = d.dish_id
-                WHERE m.date BETWEEN ? AND ?
-            """, (week_start.strftime('%Y-%m-%d'), week_end.strftime('%Y-%m-%d')))
+                WHERE m.date = ?
+                """, (today.strftime('%Y-%m-%d'),))
             menu_rows = cur_menu.fetchall()
             cur_menu.close()
             conn_menu.close()
@@ -261,12 +301,13 @@ else:
             for menu_date, hall, meal, dish_name in menu_rows:
                 if dish_name in fav_dish_names:
                     reminders.append({
-                        "dish_name": dish_name,
-                        "dining_hall": hall,
-                        "meal": meal,
-                        "date": menu_date
+                    "dish_name": dish_name,
+                    "dining_hall": hall,
+                    "meal": meal,
+                    "date": menu_date
                     })
             return reminders
+
         
         st.markdown(
         """
@@ -323,6 +364,7 @@ else:
                     font-size: 1.5rem;
                     color: #272936;
                 "><b>Your personalized Wellesley dining experience, powered by <span style='color:#ff96ec;'>Bitzy</span>!</b></div>
+                Scroll to see your <span style='color:#ff96ec;'>reminders, streak, and Top 5 dishes</span>!</div>
             </div>
             """,
             unsafe_allow_html=True
@@ -403,6 +445,89 @@ else:
                     unsafe_allow_html=True
                 )
             st.markdown("</span></div>", unsafe_allow_html=True)
+        streak = get_journal_streak(conn_user, st.session_state.user_id)
+        if streak >= 2:
+                st.markdown(
+                    f"""
+                    <div style="
+                        background: #fff6fb;
+                        border-radius: 18px;
+                        padding: 1.5em 1.5em 1.2em 1.5em;
+                        margin: 2em auto 2em auto;
+                        max-width: 600px;
+                        box-shadow: 0 0 32px 8px #ff96ec, 0 0 64px 16px #ffd4f1;
+                        text-align: center;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        gap: 18px;
+                        position: relative;
+                    ">
+                        <img src="https://i.postimg.cc/RZ58LF1K/bitzy-excited.png" alt="Bitzy Excited" style="width: 90px; height: 90px;">
+                        <span style="
+                            color: #ff96ec;
+                            font-size: 2rem;
+                            font-family: 'Pacifico', cursive;
+                            font-weight: bold;
+                            text-shadow: 0 0 12px #ff96ec, 0 0 24px #ffd4f1;
+                            margin-bottom: 0.5em;
+                        ">
+                            Bitzy's Weekly Streak!
+                        </span>
+                        <span style="
+                            color: #272936;
+                            font-size: 1.3rem;
+                            font-family: 'Quicksand', 'Montserrat', sans-serif;
+                            font-weight: bold;
+                        ">
+                            <b>{streak} days in a row!</b> <br>
+                            Keep it up and earn more Bitzy badges!
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+        elif streak == 1:
+                st.markdown(
+                    """
+                    <div style="
+                        background: #fff6fb;
+                        border-radius: 18px;
+                        padding: 1.2em 1.5em 1em 1.5em;
+                        margin: 2em auto 2em auto;
+                        max-width: 600px;
+                        box-shadow: 0 0 16px 4px #ff96ec, 0 0 32px 8px #ffd4f1;
+                        text-align: center;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        gap: 18px;
+                        position: relative;
+                    ">
+                        <img src="https://i.postimg.cc/44Ks8YcS/bitzy-happy.png" alt="Bitzy Happy" style="width: 70px; height: 70px;">
+                        <span style="
+                            color: #ff96ec;
+                            font-size: 1.3rem;
+                            font-family: 'Pacifico', cursive;
+                            font-weight: bold;
+                            text-shadow: 0 0 8px #ff96ec, 0 0 16px #ffd4f1;
+                            margin-bottom: 0.5em;
+                        ">
+                            Bitzy’s Streak Started!
+                        </span>
+                        <span style="
+                            color: #272936;
+                            font-size: 1.1rem;
+                            font-family: 'Quicksand', 'Montserrat', sans-serif;
+                            font-weight: bold;
+                        ">
+                            1 day in a row! Come back tomorrow for a streak!
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
         # --- Top 5 Dishes ---
         top5 = get_top_5_dishes(conn_user, st.session_state.user_id)
         if top5:
@@ -421,7 +546,7 @@ else:
                 align-items: center;
                 gap: 24px;
             ">
-                <img src="https://i.postimg.cc/RZ58LF1K/bitzy-excited.png" alt="Bitzy Excited" style="width: 80px; height: 80px; border-radius: 50%;">
+                <img src="https://i.postimg.cc/h4xxktW2/bitzy-neutral.png" alt="Bitzy Neutral" style="width: 80px; height: 80px; border-radius: 50%;">
                 <span style="color: #ff96ec; font-size: 1.5rem; font-family: 'Quicksand', 'Montserrat', sans-serif; font-weight: bold;">
                 Here are your Top 5 Dishes!
                 </span>

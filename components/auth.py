@@ -1,7 +1,7 @@
 import streamlit as st
 from authlib.integrations.requests_client import OAuth2Session
 from components.menu_display import display_menu_and_handle_journal
-from database.user_db import create_connection as create_user_connection, add_user, USER_DB, display_journal, display_user_dish_ratings
+from database.user_db import create_connection as create_user_connection, add_user, USER_DB, display_journal, display_user_dish_ratings, get_mood_insights
 from .user_profile import render_profile_form
 from temp_graph_stuff import create_plots
 import sqlite3
@@ -129,6 +129,51 @@ def render_location(connection):
             )
 
             create_plots()
+            conn_user= create_user_connection(USER_DB)
+            mood_insights = get_mood_insights(conn_user, st.session_state.user_id)
+            if mood_insights and (mood_insights["top_meal"] or mood_insights["top_dish"]):
+                    st.markdown(
+                        f"""
+                        <div style="
+                            background: #fff6fb;
+                            border-radius: 18px;
+                            padding: 1.5em 1.5em 1.2em 1.5em;
+                            margin: 2em auto 2em auto;
+                            max-width: 600px;
+                            box-shadow: 0 0 32px 8px #ff96ec, 0 0 64px 16px #ffd4f1;
+                            text-align: center;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            gap: 18px;
+                            position: relative;
+                        ">
+                            <img src="https://i.postimg.cc/44Ks8YcS/bitzy-happy.png" alt="Bitzy Happy" style="width: 80px; height: 80px;">
+                            <span style="
+                                color: #ff96ec;
+                                font-size: 1.7rem;
+                                font-family: 'Pacifico', cursive;
+                                font-weight: bold;
+                                text-shadow: 0 0 12px #ff96ec, 0 0 24px #ffd4f1;
+                                margin-bottom: 0.5em;
+                            ">
+                                Bitzy’s Mood Booster!
+                            </span>
+                            <span style="
+                                color: #272936;
+                                font-size: 1.2rem;
+                                font-family: 'Quicksand', 'Montserrat', sans-serif;
+                                font-weight: bold;
+                            ">
+                                {f"Your happiest meal is <b style='color:#ff96ec'>{mood_insights['top_meal']}</b>!" if mood_insights['top_meal'] else ""}
+                                <br>
+                                {f"Your happiest dish is <b style='color:#ff96ec'>{mood_insights['top_dish']}</b>!" if mood_insights['top_dish'] else ""}
+                            </span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
             display_journal(connection, st.session_state.user_id)
 
         elif selected_tab == "Menu":
@@ -157,7 +202,6 @@ def render_location(connection):
     
 
 
-
 def render_sidebar():
     """Handles the login/logout process and user info in the sidebar."""
     st.sidebar.markdown(
@@ -177,11 +221,39 @@ def render_sidebar():
     )
 
     logged_in = google_login()
+    user_picture = None  # Always define a default
 
     if logged_in:
         user_id = st.session_state.get("user_id")
         db_username = st.session_state.get("db_username")
-        user_picture = st.session_state.get("user", {}).get("picture")
+        bitzy_moods = {
+            "Excited": "https://i.postimg.cc/RZ58LF1K/bitzy-excited.png",
+            "Happy": "https://i.postimg.cc/44Ks8YcS/bitzy-happy.png",
+            "Neutral": "https://i.postimg.cc/h4xxktW2/bitzy-neutral.png",
+            "Sad": "https://i.postimg.cc/jdFqxzbK/bitzy-sad.png",
+            "Mad": "https://i.postimg.cc/qvFN5PRs/bitzy-mad.png"
+        }
+        if user_id and "profile_bitzy_mood" not in st.session_state:
+            try:
+                conn = create_user_connection(USER_DB)
+                cursor = conn.cursor()
+                cursor.execute("SELECT bitzy_mood FROM User WHERE user_id = ?", (user_id,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    st.session_state["profile_bitzy_mood"] = row[0]
+                else:
+                    st.session_state["profile_bitzy_mood"] = "Happy"
+                cursor.close()
+                conn.close()
+            except Exception:
+                st.session_state["profile_bitzy_mood"] = "Happy"
+        profile_bitzy = st.session_state.get("profile_bitzy_mood")
+        if profile_bitzy and profile_bitzy in bitzy_moods:
+            user_picture = bitzy_moods[profile_bitzy]
+        elif "user" in st.session_state and st.session_state["user"].get("picture"):
+            user_picture = st.session_state["user"]["picture"]
+        else:
+            user_picture = "https://i.imgur.com/TMVgTr0.png"
 
         # Fetch user info from DB if not already in session state or needs update
         if user_id and not db_username:
@@ -210,7 +282,6 @@ def render_sidebar():
                     "email": user_info.get("email"),
                     "picture": user_info.get("picture"),
                 }
-                user_picture = user_info.get("picture") # Update picture
 
                 # --- Database Check/Add User on First Login ---
                 conn = None
@@ -291,8 +362,7 @@ def render_sidebar():
             st.sidebar.markdown(
                 f"""
                 <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
-                <img src="{user_picture or 'https://i.imgur.com/TMVgTr0.png'}" style="width: 60px; height: 60px; border: 3px solid #ff96ec; border-radius: 50%;">
-                </div>
+                    <img src="{user_picture}" style="width: 60px; height: 60px; border: 3px solid #ff96ec; border-radius: 50%;">                </div>
                 <div style="text-align: center; color: #272936; font-weight: bold; font-size: 1.1em;">
                  {welcome_message}
                 </div>

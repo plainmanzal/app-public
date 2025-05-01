@@ -252,21 +252,70 @@ def display_menu_and_handle_journal(conn_user):
 
     # Handle journal entry if a dish has been added
     if st.session_state["added_to_journal"] and st.session_state["selected_dishes"]:
-        st.divider()
-        st.subheader("Finish Your Journal Entry!")
-        date_input = st.date_input("Date", date.today())
-        mood_input = st.selectbox("Mood", ["Happy", "Neutral", "Sad", "Excited", "Tired", "Angry", "Stressed"])
-        notes_input = st.text_area("Notes")
+        st.markdown(
+            """
+            <div style="background: #ff96ec; border-radius: 18px; padding: 1.5em; margin: 1em auto; margin-bottom: 40px; max-width: 800px; box-shadow: 0 0 20px rgba(255, 105, 180, 0.8); text-align: center;">
+            <span style="color: #ffffff; font-size: 1.5rem; font-family: 'Pacifico', cursive;; font-weight: bold;">✨ Finish Your Journal Entry! ✨</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            """
+            <div style="background: #eaf6ff; border-radius: 12px; padding: 1.5em; max-width: 150px; box-shadow: 0 0 15px rgba(0, 183, 255, 0.7);">
+            <label style="font-family: 'Quicksand', sans-serif; font-size: 1.1rem; color: #272936; font-weight: bold;">📅 Date</label>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        date_input = st.date_input(" ", date.today())
+
+        st.markdown(
+            """
+            <div style="background: #eaf6ff; border-radius: 12px; padding: 1.5em; margin-bottom: 30px; max-width: 150px; box-shadow: 0 0 15px rgba(0, 183, 255, 0.7);">
+            <label style="font-family: 'Quicksand', sans-serif; font-size: 1.1rem; color: #272936; font-weight: bold;">😊 Mood</label>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        mood_sentiment_mapping = ["Depressed...", "tired", "Neutral.", "Happy!", "Jubilicious!!!!"]
+        mood_input = st.feedback("faces", key="journal_mood")
+        mood = mood_sentiment_mapping[mood_input] if mood_input is not None else "--no emotion--"
+
+        st.markdown(
+            f"""
+            <div style="
+                background-color: #f9f9f9;
+                border: 1px solid #ddd;
+                border-radius: 10px;
+                padding: 15px;
+                margin-bottom: 10px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); ">
+                <b> How are you feeling??<br>
+                You selected: {mood}   </b>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            """
+            <div style="background: #eaf6ff; border-radius: 12px; padding: 1.5em; max-width: 150px; box-shadow: 0 0 15px rgba(0, 183, 255, 0.7);">
+            <label style="font-family: 'Quicksand', sans-serif; font-size: 1.1rem; color: #272936; font-weight: bold;">📝 Notes</label>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        notes_input = st.text_area(" ")
 
         # Display all selected dishes
         for key, selected_dish in st.session_state["selected_dishes"].items():
             dish_name, dish_id, calories, protein, carbs, fat, allergens, preferences = selected_dish
-            st.success(f"{dish_name} was added to your journal!")
         
         
             #allow for ranking of dishes
             sentiment_mapping = [1,2,3,4,5]
-            rating_input = st.feedback("stars")
+            rating_input = st.feedback("stars", key=f"feedback_{dish_id}")
             rate = sentiment_mapping[rating_input] if rating_input is not None else "no rating"
     
             st.markdown(

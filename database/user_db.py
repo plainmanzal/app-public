@@ -502,4 +502,39 @@ def display_journal(conn_user, user_id):
             
     else:
         st.info("No journal entries for that date.")
-    
+
+def get_mood_insights(conn_user, user_id):
+    # Get all journal entries with mood and meal info
+    cur = conn_user.cursor()
+    cur.execute("""
+        SELECT dj.mood, dj.meal_type, d.dish_name, dj.notes
+        FROM Daily_Journal dj
+        JOIN Journal_Dish jd ON dj.journal_id = jd.journal_id
+        JOIN Dish d ON jd.dish_id = d.dish_id
+        WHERE dj.user_id = ?
+    """, (user_id,))
+    rows = cur.fetchall()
+    cur.close()
+    if not rows:
+        return None
+
+    # Count happy/positive moods by meal type and dish
+    happy_moods = {"Happy", "Excited", "😊", "😋"}
+    meal_happy = {}
+    dish_happy = {}
+    for mood, meal, dish, notes in rows:
+        if mood in happy_moods:
+            meal_happy[meal] = meal_happy.get(meal, 0) + 1
+            dish_happy[dish] = dish_happy.get(dish, 0) + 1
+
+    top_meal = max(meal_happy, key=meal_happy.get) if meal_happy else None
+    top_dish = max(dish_happy, key=dish_happy.get) if dish_happy else None
+    return {
+        "top_meal": top_meal,
+        "top_dish": top_dish,
+        "meal_happy": meal_happy,
+        "dish_happy": dish_happy
+    }
+
+
+
