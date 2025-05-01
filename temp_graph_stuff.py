@@ -7,39 +7,6 @@ from database.user_db import create_connection as create_user_connection, USER_D
 from database.user_db import parse_quantity
 
 
-# creating the data visualizations
-
-# Example: Calculate total calories
-def calculate_total_calories(conn, user_id, start_date, end_date):
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT d.calories, jd.quantity
-        FROM JournalDish jd
-        JOIN Journal j ON jd.journal_id = j.journal_id
-        JOIN Dish d ON jd.dish_id = d.dish_id
-        WHERE j.user_id = ? AND j.date BETWEEN ? AND ?
-    """, (user_id, start_date, end_date))
-    
-    total_calories = 0
-    for row in cursor.fetchall():
-        calories = row[0] or 0
-        quantity_str = row[1] or "1"
-        
-        # Convert quantity to numeric value
-        if quantity_str == "1/3":
-            quantity = 1/3
-        elif quantity_str == "1/2":
-            quantity = 0.5
-        else:
-            try:
-                quantity = float(quantity_str)
-            except ValueError:
-                quantity = 1.0
-                
-        total_calories += calories * quantity
-    
-    return total_calories
-
 
 # --- Update get_user_nutrition_data to include quantity ---
 def get_user_nutrition_data(conn_user, user_id):
@@ -48,7 +15,6 @@ def get_user_nutrition_data(conn_user, user_id):
             dj.date,
             dj.meal_type,
             d.dish_name,
-            jd.quantity, -- Fetch quantity
             d.calories,
             d.protein,
             d.carbs,
@@ -60,20 +26,8 @@ def get_user_nutrition_data(conn_user, user_id):
         ORDER BY dj.date DESC
     """
     df = pd.read_sql_query(sql, conn_user, params=(user_id,))
-
-    # --- Calculate adjusted macros based on quantity ---
-    if not df.empty:
-        df['quantity_float'] = df['quantity'].apply(parse_quantity)
-        for col in ['calories', 'protein', 'carbs', 'fat']:
-            # Ensure column exists and is numeric before multiplying
-            if col in df.columns:
-                 # Fill NaN/None with 0 before multiplication
-                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                 df[col] = df[col] * df['quantity_float']
-            else:
-                 df[col] = 0 # Add column as 0 if missing
-
     return df
+
 
 
 # --- Update create_plots --
@@ -108,9 +62,14 @@ def create_plots():
     <div class='bitzy-plot-title' style="
         background: #ffffff;
         border-radius: 12px;
+        margin: 0 auto 1.5em auto;
         padding: 1em;
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
         display: inline-block;
+        text-align: center;
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
     ">
         📊 Track Your Macros by Meal Type
     </div>
@@ -152,7 +111,32 @@ def create_plots():
             st.info(f"No entries for {selected_date.strftime('%Y-%m-%d')}.")
             st.markdown("</div>", unsafe_allow_html=True)
             return
-
+        
+        if len(df_day) < 1 :
+            st.markdown(
+                """
+                <div style="
+                    background: #d0ff80;
+                    border-radius: 18px;
+                    padding: 1.2em 1.5em 1em 1.5em;
+                    margin: 1.5em auto 2em auto;
+                    max-width: 600px;
+                    box-shadow: 0 2px 16px #ffd4f1;
+                    text-align: center;
+                    display: flex;
+                    align-items: center;
+                    gap: 18px;
+                ">
+                    <img src="https://i.postimg.cc/44Ks8YcS/bitzy-happy.png" alt="Bitzy Happy" style="width: 60px; height: 60px;">
+                    <span style="color: #ff96ec; font-size: 1.15rem; font-family: 'Quicksand', 'Montserrat', sans-serif; font-weight: bold;">
+                        Bitzy says add one more entry to see your graphs!
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            return
         # --- Group by meal type and sum selected macros ---
         grouped_df = df_day.groupby('meal_type', as_index=False)[selected_macros].sum()
         grouped_df = grouped_df.sort_values('meal_type')

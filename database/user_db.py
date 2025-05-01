@@ -136,16 +136,14 @@ def add_journal_dish(conn_user, journal_id, dish_id):
 
 
 # adds a rating for a dish in a journal entry
-def add_rating(conn_user, journal_dish_id, dish_id, rating):
-    sql = ''' INSERT INTO Rating(journal_dish_id, dish_id, rating) VALUES (?,?,?) '''
-    cursor = conn_user.cursor()
-    try:
-        cursor.execute(sql, (journal_dish_id, dish_id, rating))
-        conn_user.commit()
-        return cursor.lastrowid
-    except sqlite3.Error as e:
-        st.error(f"Error adding rating: {e}")
-        return None
+def add_rating(conn, journal_dish_id, dish_id, rating):
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO Rating (journal_dish_id, dish_id, rating) VALUES (?, ?, ?)",
+        (journal_dish_id, dish_id, rating)
+    )
+    conn.commit()
+    cur.close()
 
 def parse_quantity(quantity_str):
     """Converts quantity string ('1/3', '1/2', '2', custom) to float."""

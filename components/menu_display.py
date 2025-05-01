@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import sys
 from database.user_db import (
+    ensure_dish_in_user_db,
     log_daily_journal_entry,
     add_journal_dish,
     add_rating,
@@ -72,56 +73,62 @@ def get_all_allergens_and_prefs(conn_wfr):
     return sorted(allergens), sorted(preferences)
 
 def bitzy_emotions(rating):
-    if rating == "one star":
+    if rating == 1:
         st.markdown(
             f"""
             <div style="margin-bottom: 20px;">
-                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
-                    <b>Yikes! Bitzy wants a refund in flavor points 😢</b>
+            <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 25px rgba(255, 105, 180, 1); display: flex; align-items: center;">
+                <img src="https://i.postimg.cc/qvFN5PRs/bitzy-mad.png" alt="Bitzy Mad" style="width: 60px; height: 60px; margin-right: 10px;">
+                <b>Yikes! Bitzy wants a refund in flavor points </b>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    elif rating == 2:
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+            <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 25px rgba(255, 105, 180, 1); display: flex; align-items: center;">
+                <img src="https://i.postimg.cc/jdFqxzbK/bitzy-sad.png" alt="Bitzy Sad" style="width: 60px; height: 60px; margin-right: 10px;">
+                <b>Meh. Not Bitzy’s fave… </b>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    elif rating == 3:
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+            <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 25px rgba(255, 105, 180, 1); display: flex; align-items: center;">
+                <img src="https://i.postimg.cc/h4xxktW2/bitzy-neutral.png" alt="Bitzy Neutral" style="width: 60px; height: 60px; margin-right: 10px;">
+                <b>Solid bite! Could use a little extra something. </b>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    elif rating == 4:
+        st.markdown(
+            f"""
+            <div style="margin-bottom: 20px;">
+                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 25px rgba(255, 105, 180, 1); display: flex; align-items: center;">
+                    <img src="https://i.postimg.cc/44Ks8YcS/bitzy-happy.png" alt="Bitzy Happy" style="width: 60px; height: 60px; margin-right: 10px;">
+                    <b>Yum! That was a tasty treat!</b>
                 </div>
             </div>
             """,
             unsafe_allow_html=True
         )
-    elif rating == "two stars":
+    elif rating == 5:
         st.markdown(
             f"""
             <div style="margin-bottom: 20px;">
-                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
-                    <b>Meh. Not Bitzy’s fave… 😐</b>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    elif rating == "three stars":
-        st.markdown(
-            f"""
-            <div style="margin-bottom: 20px;">
-                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
-                    <b>Solid bite! Could use a little extra something. 😃</b>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    elif rating == "four stars":
-        st.markdown(
-            f"""
-            <div style="margin-bottom: 20px;">
-                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
-                    <b>Yum! That was a tasty treat! 😍</b>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    elif rating == "five stars":
-        st.markdown(
-            f"""
-            <div style="margin-bottom: 20px;">
-                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);">
-                    <b>My byte-sized heart is full! That meal was perfection. 🤩</b>
+                <div style="background: #fff6fb; border-radius: 12px; padding: 10px; box-shadow: 0 0 25px rgba(255, 105, 180, 1); display: flex; align-items: center;">
+                    <img src="https://i.postimg.cc/RZ58LF1K/bitzy-excited.png" alt="Bitzy Excited" style="width: 60px; height: 60px; margin-right: 10px;">
+                    <b>My byte-sized heart is full! That meal was perfection.</b>
                 </div>
             </div>
             """,
@@ -258,7 +265,7 @@ def display_menu_and_handle_journal(conn_user):
         
         
             #allow for ranking of dishes
-            sentiment_mapping = ["one star", "two stars", "three stars", "four stars", "five stars"]
+            sentiment_mapping = [1,2,3,4,5]
             rating_input = st.feedback("stars")
             rate = sentiment_mapping[rating_input] if rating_input is not None else "no rating"
     
@@ -297,8 +304,18 @@ def display_menu_and_handle_journal(conn_user):
                  )
  
                 if journal_id != None:
-                    add_journal_dish(conn_user, journal_id, dish_id)
-                    add_rating(conn_user, journal_id, dish_id, rating_input)
+                    ensure_dish_in_user_db(
+                        conn_user,
+                        dish_id,
+                        dish_name,
+                        location,  # or location
+                        calories,
+                        protein,
+                        carbs,
+                        fat
+                    )
+                    journal_dish_id = add_journal_dish(conn_user, journal_id, dish_id)
+                    add_rating(conn_user, journal_dish_id, dish_id, rate)
                     st.session_state["selected_dishes"] = {} # why is this reset every time?
                     st.session_state["added_to_journal"] = False
                     st.success("Bitzy saved this journal entry! 🎉")

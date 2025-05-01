@@ -104,26 +104,7 @@ def render_profile_form(user_id):
         flex-direction: column;
 
     }
-    .stButton>button { /* Keep your button style */
-        background-color: #ff96ec;
-        color: #fff;
-        border-radius: 8px;
-        font-family: 'Quicksand', 'Montserrat', sans-serif';
-        font-weight: bold;
-        letter-spacing: 1px;
-        border: 2px solid #ffd4f1;
-        box-shadow: 0 0 12px 2px #ff96ec, 0 0 24px 4px #ffd4f1;
-        transition: box-shadow 0.3s, background 0.3s, color 0.3s;
-        padding: 0.7em 1.2em;
-        font-size: 1.1rem;
-        margin-top: 1em;
-    }
-    .stButton>button:hover {
-        background-color: #ffd4f1;
-        color: #ff96ec;
-        box-shadow: 0 0 24px 6px #ff96ec, 0 0 48px 12px #ffd4f1;
-        border: 2px solid #ff96ec;
-    }
+
     /* Ensure input labels are styled */
      .stTextInput label, .stNumberInput label {
         font-weight: bold !important;
