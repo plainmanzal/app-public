@@ -1,5 +1,4 @@
 import streamlit as st
-import sqlalchemy as sql
 from components.auth import render_sidebar
 from datetime import timedelta, date
 from components.menu_display import display_menu_and_handle_journal
